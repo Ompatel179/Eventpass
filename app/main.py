@@ -1,14 +1,6 @@
-from fastapi import FastAPI,HTTPException
-from datetime import datetime
-from pydantic import BaseModel,Field
+from fastapi import FastAPI, HTTPException
+from app.schemas import EventCreate, EventRead
 
-class EventCreate(BaseModel):
-    name:str = Field(min_length=1)
-    starts_at: datetime
-    location:str
-    capacity:int = Field(gt=0)
-class EventRead(EventCreate):
-    id:int
 
 
 app = FastAPI()
