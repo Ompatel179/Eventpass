@@ -1,5 +1,5 @@
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field , ConfigDict
 
 class EventCreate(BaseModel):
     name: str = Field(min_length=1)
@@ -9,4 +9,5 @@ class EventCreate(BaseModel):
 
 
 class EventRead(EventCreate):
+    model_config = ConfigDict(from_attributes=True)
     id: int
