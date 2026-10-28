@@ -1,10 +1,11 @@
 from fastapi import Depends, FastAPI, HTTPException
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Event
-from app.schemas import EventCreate, EventRead
+from app.models import Event, Registration
+from app.schemas import EventCreate, EventRead, RegistrationCreate, RegistrationRead
 
 
 
@@ -33,3 +34,38 @@ def get_event(event_id: int, db: Session = Depends(get_db)) -> EventRead:
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return event
+
+@app.post("/events/{event_id}/registrations", status_code=201)
+def create_registration(
+    event_id: int,
+    registration: RegistrationCreate,
+    db: Session = Depends(get_db),
+) -> RegistrationRead:
+    if db.get(Event, event_id) is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    db_registration = Registration(event_id=event_id, **registration.model_dump())
+    db.add(db_registration)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="This email is already registered for this event",
+        )
+    db.refresh(db_registration)
+    return db_registration
+
+@app.get("/events/{event_id}/registrations")
+def list_registrations(event_id: int, db: Session = Depends(get_db)) -> list[RegistrationRead]:
+    if db.get(Event, event_id) is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    return list(
+        db.scalars(
+            select(Registration)
+            .where(Registration.event_id == event_id)
+            .order_by(Registration.id)
+        )
+    )
