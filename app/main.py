@@ -15,7 +15,7 @@ from app.schemas import (
     UserCreate,
     UserRead,
 )
-from app.security import hash_password
+from app.security import create_access_token, hash_password, verify_password,get_current_user
 
 
 app = FastAPI()
@@ -93,3 +93,21 @@ def signup(user: UserCreate, db: Session = Depends(get_db)) -> UserRead:
         raise HTTPException(status_code=409, detail="Email already registered")
     db.refresh(db_user)
     return db_user
+
+@app.post("/auth/login")
+def login(
+    form: OAuth2PasswordRequestForm = Depends(),
+    db: Session = Depends(get_db),
+) -> Token:
+    user = db.scalar(select(User).where(User.email == form.username.lower()))
+    if user is None or not verify_password(form.password, user.hashed_password):
+        raise HTTPException(
+            status_code=401,
+            detail="Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return Token(access_token=create_access_token(user), token_type="bearer")
+
+@app.get("/auth/me")
+def read_me(current_user: User = Depends(get_current_user)) -> UserRead:
+    return current_user
