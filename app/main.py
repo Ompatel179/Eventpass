@@ -1,12 +1,21 @@
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Event, Registration
-from app.schemas import EventCreate, EventRead, RegistrationCreate, RegistrationRead
-
+from app.models import Event, Registration, User
+from app.schemas import (
+    EventCreate,
+    EventRead,
+    RegistrationCreate,
+    RegistrationRead,
+    Token,
+    UserCreate,
+    UserRead,
+)
+from app.security import hash_password
 
 
 app = FastAPI()
@@ -69,3 +78,18 @@ def list_registrations(event_id: int, db: Session = Depends(get_db)) -> list[Reg
             .order_by(Registration.id)
         )
     )
+
+@app.post("/auth/signup", status_code=201)
+def signup(user: UserCreate, db: Session = Depends(get_db)) -> UserRead:
+    db_user = User(
+        email=user.email.lower(),
+        hashed_password=hash_password(user.password),
+    )
+    db.add(db_user)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Email already registered")
+    db.refresh(db_user)
+    return db_user
