@@ -31,3 +31,15 @@ class Registration(Base):
     student_name: Mapped[str]
     student_email: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())    
+
+class User(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        CheckConstraint("role IN ('organizer', 'student')", name="users_role_check"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    email: Mapped[str] = mapped_column(unique=True)
+    hashed_password: Mapped[str]
+    role: Mapped[str] = mapped_column(server_default="student")
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())    
