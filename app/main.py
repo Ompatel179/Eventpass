@@ -15,7 +15,7 @@ from app.schemas import (
     UserCreate,
     UserRead,
 )
-from app.security import create_access_token, hash_password, verify_password,get_current_user
+from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
 
 
 app = FastAPI()
@@ -25,7 +25,7 @@ app = FastAPI()
 def home() -> dict[str,str]:
     return {"message": "Welcome to EventPass!"}
 
-@app.post("/events", status_code=201)
+@app.post("/events", status_code=201, dependencies=[Depends(require_organizer)])
 def create_event(event: EventCreate, db: Session = Depends(get_db)) -> EventRead:
     db_event = Event(**event.model_dump())
     db.add(db_event)
@@ -111,3 +111,4 @@ def login(
 @app.get("/auth/me")
 def read_me(current_user: User = Depends(get_current_user)) -> UserRead:
     return current_user
+

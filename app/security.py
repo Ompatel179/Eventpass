@@ -49,3 +49,8 @@ def get_current_user(
     if user is None:
         raise credentials_error
     return user
+
+def require_organizer(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role != "organizer":
+        raise HTTPException(status_code=403, detail="Organizer access required")
+    return current_user
