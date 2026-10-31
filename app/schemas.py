@@ -12,17 +12,20 @@ class EventRead(EventCreate):
     model_config = ConfigDict(from_attributes=True)
     id: int
 
-class RegistrationCreate(BaseModel):
-    student_name: str = Field(min_length=1)
-    student_email: EmailStr
 
 
-class RegistrationRead(RegistrationCreate):
+
+class RegistrationRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
     event_id: int
+    user_id: int
     created_at: datetime
+
+
+class TicketRead(RegistrationRead):
+    qr_token: str
 
 class UserCreate(BaseModel):
     email: EmailStr

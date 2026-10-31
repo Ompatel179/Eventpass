@@ -1,3 +1,4 @@
+import secrets
 from datetime import datetime
 
 from sqlalchemy import CheckConstraint, ForeignKey, UniqueConstraint, func
@@ -5,6 +6,8 @@ from sqlalchemy.orm import Mapped, mapped_column
 
 from app.database import Base
 
+def generate_qr_token() -> str:
+    return secrets.token_urlsafe(16)
 
 class Event(Base):
     __tablename__ = "events"
@@ -23,15 +26,17 @@ class Event(Base):
 class Registration(Base):
     __tablename__ = "registrations"
     __table_args__ = (
-        UniqueConstraint("event_id", "student_email", name="uq_registrations_event_email"),
+        UniqueConstraint("event_id", "user_id", name="uq_registrations_event_user"),
+        UniqueConstraint("qr_token", name="uq_registrations_qr_token"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"))
-    student_name: Mapped[str]
-    student_email: Mapped[str]
-    created_at: Mapped[datetime] = mapped_column(server_default=func.now())    
-
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", name="registrations_user_id_fkey")
+    )
+    qr_token: Mapped[str] = mapped_column(default=generate_qr_token)
+    created_at: Mapped[datetime] = mapped_column(server_default=func.now())
 class User(Base):
     __tablename__ = "users"
     __table_args__ = (

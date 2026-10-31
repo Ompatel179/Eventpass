@@ -1,4 +1,7 @@
-from fastapi import Depends, FastAPI, HTTPException
+import io
+
+import qrcode
+from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -9,7 +12,7 @@ from app.models import Event, Registration, User
 from app.schemas import (
     EventCreate,
     EventRead,
-    RegistrationCreate,
+    TicketRead,
     RegistrationRead,
     Token,
     UserCreate,
@@ -47,26 +50,24 @@ def get_event(event_id: int, db: Session = Depends(get_db)) -> EventRead:
 @app.post("/events/{event_id}/registrations", status_code=201)
 def create_registration(
     event_id: int,
-    registration: RegistrationCreate,
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
-) -> RegistrationRead:
+) -> TicketRead:
     if db.get(Event, event_id) is None:
         raise HTTPException(status_code=404, detail="Event not found")
 
-    db_registration = Registration(event_id=event_id, **registration.model_dump())
-    db.add(db_registration)
+    registration = Registration(event_id=event_id, user_id=current_user.id)
+    db.add(registration)
     try:
         db.commit()
     except IntegrityError:
         db.rollback()
-        raise HTTPException(
-            status_code=409,
-            detail="This email is already registered for this event",
-        )
-    db.refresh(db_registration)
-    return db_registration
+        raise HTTPException(status_code=409, detail="You are already registered for this event")
+    db.refresh(registration)
+    return registration
 
-@app.get("/events/{event_id}/registrations")
+@app.get("/events/{event_id}/registrations",dependencies=[Depends(require_organizer)],
+)
 def list_registrations(event_id: int, db: Session = Depends(get_db)) -> list[RegistrationRead]:
     if db.get(Event, event_id) is None:
         raise HTTPException(status_code=404, detail="Event not found")
@@ -112,3 +113,31 @@ def login(
 def read_me(current_user: User = Depends(get_current_user)) -> UserRead:
     return current_user
 
+@app.get("/me/registrations")
+def list_my_registrations(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[TicketRead]:
+    return list(
+        db.scalars(
+            select(Registration)
+            .where(Registration.user_id == current_user.id)
+            .order_by(Registration.id)
+        )
+    )
+
+
+@app.get("/me/registrations/{registration_id}/qr")
+def get_my_qr_code(
+    registration_id: int,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    registration = db.get(Registration, registration_id)
+    if registration is None or registration.user_id != current_user.id:
+        raise HTTPException(status_code=404, detail="Registration not found")
+
+    image = qrcode.make(registration.qr_token)
+    buffer = io.BytesIO()
+    image.save(buffer)
+    return Response(content=buffer.getvalue(), media_type="image/png")
