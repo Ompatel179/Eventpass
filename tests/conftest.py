@@ -103,3 +103,11 @@ def event_id(client, organizer_headers) -> int:
 def ticket(client, student_headers, event_id) -> dict:
     response = client.post(f"/events/{event_id}/registrations", headers=student_headers)
     return response.json()
+
+@pytest.fixture
+def other_student_headers(client) -> dict[str, str]:
+    client.post("/auth/signup", json={"email": "other@test.com", "password": "otherpass123"})
+    response = client.post(
+        "/auth/login", data={"username": "other@test.com", "password": "otherpass123"}
+    )
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
