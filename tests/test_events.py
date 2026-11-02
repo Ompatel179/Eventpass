@@ -3,7 +3,7 @@ import pytest
 def test_home(client):
     response = client.get("/")
     assert response.status_code == 200
-    assert response.json() == {"message": "Welcome to EventPass!"}
+    assert response.json() == {"message": "Welcome to EventPass!!!"}
 
 VALID_EVENT = {
     "name": "Career Fair",
