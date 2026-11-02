@@ -55,3 +55,9 @@ class CheckInRead(BaseModel):
     registration_id: int
     checked_in_by: int
     checked_in_at: datetime
+
+class AttendanceRead(BaseModel):
+    event_id: int
+    capacity: int
+    registered: int
+    checked_in: int

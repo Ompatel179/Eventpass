@@ -1,9 +1,10 @@
 import io
+import csv
 
 import qrcode
 from fastapi import Depends, FastAPI, HTTPException, Response
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import select
+from sqlalchemy import func,select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -19,12 +20,17 @@ from app.schemas import (
     UserRead,
     CheckInRequest,
     CheckInRead,
+    AttendanceRead,
 )
 from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
 
 
 app = FastAPI()
-
+def get_event_or_404(event_id: int, db: Session) -> Event:
+    event = db.get(Event, event_id)
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
 
 @app.get("/")
 def home() -> dict[str,str]:
@@ -55,8 +61,7 @@ def create_registration(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TicketRead:
-    if db.get(Event, event_id) is None:
-        raise HTTPException(status_code=404, detail="Event not found")
+    get_event_or_404(event_id, db)
 
     registration = Registration(event_id=event_id, user_id=current_user.id)
     db.add(registration)
@@ -71,8 +76,7 @@ def create_registration(
 @app.get("/events/{event_id}/registrations",dependencies=[Depends(require_organizer)],
 )
 def list_registrations(event_id: int, db: Session = Depends(get_db)) -> list[RegistrationRead]:
-    if db.get(Event, event_id) is None:
-        raise HTTPException(status_code=404, detail="Event not found")
+    get_event_or_404(event_id, db)
 
     return list(
         db.scalars(
@@ -166,3 +170,53 @@ def check_in(
         raise HTTPException(status_code=409, detail="Ticket already checked in")
     db.refresh(check_in_record)
     return check_in_record
+
+@app.get("/events/{event_id}/attendance", dependencies=[Depends(require_organizer)])
+def get_attendance(event_id: int, db: Session = Depends(get_db)) -> AttendanceRead:
+    event = get_event_or_404(event_id, db)
+    registered = db.scalar(
+        select(func.count())
+        .select_from(Registration)
+        .where(Registration.event_id == event_id)
+    )
+    checked_in = db.scalar(
+        select(func.count())
+        .select_from(CheckIn)
+        .join(Registration, CheckIn.registration_id == Registration.id)
+        .where(Registration.event_id == event_id)
+    )
+    return AttendanceRead(
+        event_id=event.id,
+        capacity=event.capacity,
+        registered=registered,
+        checked_in=checked_in,
+    )
+
+@app.get("/events/{event_id}/attendees.csv", dependencies=[Depends(require_organizer)])
+def export_attendees(event_id: int, db: Session = Depends(get_db)) -> Response:
+    get_event_or_404(event_id, db)
+    rows = db.execute(
+        select(User.email, Registration.created_at, CheckIn.checked_in_at)
+        .select_from(Registration)
+        .join(User, Registration.user_id == User.id)
+        .outerjoin(CheckIn, CheckIn.registration_id == Registration.id)
+        .where(Registration.event_id == event_id)
+        .order_by(Registration.id)
+    )
+
+    buffer = io.StringIO()
+    writer = csv.writer(buffer)
+    writer.writerow(["email", "registered_at", "checked_in", "checked_in_at"])
+    for email, registered_at, checked_in_at in rows:
+        writer.writerow([
+            email,
+            registered_at.isoformat(),
+            "yes" if checked_in_at else "no",
+            checked_in_at.isoformat() if checked_in_at else "",
+        ])
+
+    return Response(
+        content=buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="event_{event_id}_attendees.csv"'},
+    )
