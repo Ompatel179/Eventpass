@@ -112,3 +112,8 @@ def test_role_claim_in_token_is_not_trusted(client, student_headers):
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403
+
+def test_token_for_deleted_user_is_rejected(client):
+    token = make_token(SECRET_KEY, 30)
+    response = client.get("/auth/me", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 401
