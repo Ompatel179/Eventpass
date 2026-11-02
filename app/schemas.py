@@ -43,3 +43,15 @@ class UserRead(BaseModel):
 class Token(BaseModel):
     access_token: str
     token_type: str
+
+class CheckInRequest(BaseModel):
+    qr_token: str = Field(min_length=1)
+
+
+class CheckInRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    registration_id: int
+    checked_in_by: int
+    checked_in_at: datetime

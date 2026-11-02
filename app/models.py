@@ -48,3 +48,18 @@ class User(Base):
     hashed_password: Mapped[str]
     role: Mapped[str] = mapped_column(server_default="student")
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())    
+
+class CheckIn(Base):
+    __tablename__ = "check_ins"
+    __table_args__ = (
+        UniqueConstraint("registration_id", name="uq_check_ins_registration"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    registration_id: Mapped[int] = mapped_column(
+        ForeignKey("registrations.id", name="check_ins_registration_id_fkey")
+    )
+    checked_in_by: Mapped[int] = mapped_column(
+        ForeignKey("users.id", name="check_ins_checked_in_by_fkey")
+    )
+    checked_in_at: Mapped[datetime] = mapped_column(server_default=func.now())

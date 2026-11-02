@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.models import Event, Registration, User
+from app.models import Event, Registration, User, CheckIn
 from app.schemas import (
     EventCreate,
     EventRead,
@@ -17,6 +17,8 @@ from app.schemas import (
     Token,
     UserCreate,
     UserRead,
+    CheckInRequest,
+    CheckInRead,
 )
 from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
 
@@ -141,3 +143,26 @@ def get_my_qr_code(
     buffer = io.BytesIO()
     image.save(buffer)
     return Response(content=buffer.getvalue(), media_type="image/png")
+
+@app.post("/events/{event_id}/check-ins", status_code=201)
+def check_in(
+    event_id: int,
+    body: CheckInRequest,
+    staff: User = Depends(require_organizer),
+    db: Session = Depends(get_db),
+) -> CheckInRead:
+    registration = db.scalar(
+        select(Registration).where(Registration.qr_token == body.qr_token)
+    )
+    if registration is None or registration.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Ticket not valid for this event")
+
+    check_in_record = CheckIn(registration_id=registration.id, checked_in_by=staff.id)
+    db.add(check_in_record)
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Ticket already checked in")
+    db.refresh(check_in_record)
+    return check_in_record
