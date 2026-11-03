@@ -1,3 +1,4 @@
+from pathlib import Path
 import io
 import csv
 import logging
@@ -6,6 +7,7 @@ import time
 import qrcode
 from fastapi import Depends, FastAPI, HTTPException, Response,Request
 from fastapi.security import OAuth2PasswordRequestForm
+from fastapi.responses import FileResponse
 from sqlalchemy import func,select,text
 from sqlalchemy.exc import IntegrityError,SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -65,6 +67,13 @@ def health(db: Session = Depends(get_db)) -> dict[str, str]:
     except SQLAlchemyError:
         raise HTTPException(status_code=503, detail="Database unavailable")
     return {"status": "ok"}
+
+STATIC_DIR = Path(__file__).parent / "static"
+
+@app.get("/scanner", include_in_schema=False)
+def scanner_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "scanner.html")
+
 
 @app.post("/events", status_code=201, dependencies=[Depends(require_organizer)])
 def create_event(event: EventCreate, db: Session = Depends(get_db)) -> EventRead:
