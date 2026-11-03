@@ -34,7 +34,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("eventpass")
 
-app = FastAPI(title="EventPass")
+app = FastAPI(title="EventPass API", version="0.6.0")
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
