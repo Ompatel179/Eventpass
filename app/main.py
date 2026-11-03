@@ -1,11 +1,13 @@
 import io
 import csv
+import logging
+import time
 
 import qrcode
-from fastapi import Depends, FastAPI, HTTPException, Response
+from fastapi import Depends, FastAPI, HTTPException, Response,Request
 from fastapi.security import OAuth2PasswordRequestForm
-from sqlalchemy import func,select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func,select,text
+from sqlalchemy.exc import IntegrityError,SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
@@ -24,8 +26,28 @@ from app.schemas import (
 )
 from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
+logger = logging.getLogger("eventpass")
 
 app = FastAPI()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "%s %s -> %d (%.1f ms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
+
 def get_event_or_404(event_id: int, db: Session) -> Event:
     event = db.get(Event, event_id)
     if event is None:
@@ -35,6 +57,14 @@ def get_event_or_404(event_id: int, db: Session) -> Event:
 @app.get("/")
 def home() -> dict[str,str]:
     return {"message": "Welcome to EventPass!"}
+
+@app.get("/health")
+def health(db: Session = Depends(get_db)) -> dict[str, str]:
+    try:
+        db.execute(text("SELECT 1"))
+    except SQLAlchemyError:
+        raise HTTPException(status_code=503, detail="Database unavailable")
+    return {"status": "ok"}
 
 @app.post("/events", status_code=201, dependencies=[Depends(require_organizer)])
 def create_event(event: EventCreate, db: Session = Depends(get_db)) -> EventRead:
