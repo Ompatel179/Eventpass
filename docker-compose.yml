@@ -12,6 +12,13 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+  redis:
+    image: redis:7
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5  
 
   api:
     build: .
@@ -20,8 +27,11 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://eventpass:eventpass@db:5432/eventpass
       SECRET_KEY: ${SECRET_KEY}
+      REDIS_URL: redis://redis:6379/0
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
 volumes:
