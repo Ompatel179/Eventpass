@@ -23,11 +23,22 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
 
     env:
       DATABASE_URL: postgresql+psycopg://eventpass:eventpass@localhost:5432/eventpass_test
       TEST_DATABASE_URL: postgresql+psycopg://eventpass:eventpass@localhost:5432/eventpass_test
       SECRET_KEY: ci-only-secret-not-used-anywhere-real-0123456789
+      REDIS_URL: redis://localhost:6379/0
+      TEST_REDIS_URL: redis://localhost:6379/1
 
     steps:
       - name: Check out code

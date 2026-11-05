@@ -9,13 +9,17 @@ from app.database import Base, get_db
 from app.main import app
 from app.models import User
 from app.security import hash_password
+import redis
+from app.rate_limit import get_redis
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
 assert "test" in TEST_DATABASE_URL, "Refusing to run tests against a non-test database"
 
 engine = create_engine(TEST_DATABASE_URL)
 TestingSessionLocal = sessionmaker(bind=engine)
-
+TEST_REDIS_URL = os.environ["TEST_REDIS_URL"]
+assert TEST_REDIS_URL.endswith("/1"), "Refusing to flush a non-test Redis database"
+test_redis = redis.Redis.from_url(TEST_REDIS_URL, decode_responses=True)
 
 def override_get_db():
     db = TestingSessionLocal()
@@ -40,6 +44,7 @@ def clean_tables():
         connection.execute(
             text("TRUNCATE check_ins, registrations, events, users RESTART IDENTITY CASCADE")
         )
+    test_redis.flushdb()
 
 
 @pytest.fixture
@@ -54,6 +59,7 @@ def db():
 @pytest.fixture
 def client():
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis] = lambda: test_redis 
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

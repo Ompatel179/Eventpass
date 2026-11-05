@@ -70,6 +70,10 @@
           password: document.getElementById("password").value,
         }),
       });
+      if (response.status === 429) {
+        showResult("Too many attempts: wait a minute", "warn");
+        return;
+      }
       if (!response.ok) {
         showResult("Wrong email or password", "bad");
         return;

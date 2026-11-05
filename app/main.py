@@ -27,6 +27,8 @@ from app.schemas import (
     AttendanceRead,
 )
 from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
+import redis
+from app.rate_limit import client_ip, enforce_rate_limit, get_redis
 
 logging.basicConfig(
     level=logging.INFO,
@@ -126,7 +128,13 @@ def list_registrations(event_id: int, db: Session = Depends(get_db)) -> list[Reg
     )
 
 @app.post("/auth/signup", status_code=201)
-def signup(user: UserCreate, db: Session = Depends(get_db)) -> UserRead:
+def signup(
+    user: UserCreate,
+    request: Request,
+    db: Session = Depends(get_db),
+    redis_conn: redis.Redis = Depends(get_redis),
+) -> UserRead:
+    enforce_rate_limit(redis_conn, f"rate:signup:ip:{client_ip(request)}", limit=10, window_seconds=60)
     db_user = User(
         email=user.email.lower(),
         hashed_password=hash_password(user.password),
@@ -142,10 +150,15 @@ def signup(user: UserCreate, db: Session = Depends(get_db)) -> UserRead:
 
 @app.post("/auth/login")
 def login(
+    request: Request,
     form: OAuth2PasswordRequestForm = Depends(),
     db: Session = Depends(get_db),
+    redis_conn: redis.Redis = Depends(get_redis),
 ) -> Token:
-    user = db.scalar(select(User).where(User.email == form.username.lower()))
+    email = form.username.lower()
+    enforce_rate_limit(redis_conn, f"rate:login:ip:{client_ip(request)}", limit=20, window_seconds=60)
+    enforce_rate_limit(redis_conn, f"rate:login:email:{email}", limit=5, window_seconds=60)
+    user = db.scalar(select(User).where(User.email == email))
     if user is None or not verify_password(form.password, user.hashed_password):
         raise HTTPException(
             status_code=401,
