@@ -3,6 +3,7 @@ import io
 import csv
 import logging
 import time
+import json
 
 import qrcode
 from fastapi import Depends, FastAPI, HTTPException, Response,Request
@@ -29,6 +30,8 @@ from app.schemas import (
 from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
 import redis
 from app.rate_limit import client_ip, enforce_rate_limit, get_redis
+from app.cache import EVENTS_LIST_KEY, cache_delete, cache_get, cache_set, event_key
+
 
 logging.basicConfig(
     level=logging.INFO,
@@ -78,23 +81,47 @@ def scanner_page() -> FileResponse:
 
 
 @app.post("/events", status_code=201, dependencies=[Depends(require_organizer)])
-def create_event(event: EventCreate, db: Session = Depends(get_db)) -> EventRead:
+def create_event(
+    event: EventCreate,
+    db: Session = Depends(get_db),
+    redis_conn: redis.Redis = Depends(get_redis),
+) -> EventRead:
     db_event = Event(**event.model_dump())
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
+    cache_delete(redis_conn, EVENTS_LIST_KEY)
     return db_event
 
 @app.get("/events")
-def list_events(db: Session = Depends(get_db)) -> list[EventRead]:
-    return list(db.scalars(select(Event).order_by(Event.id)))
+def list_events(
+    db: Session = Depends(get_db),
+    redis_conn: redis.Redis = Depends(get_redis),
+) -> list[EventRead]:
+    cached = cache_get(redis_conn, EVENTS_LIST_KEY)
+    if cached is not None:
+        return json.loads(cached)
+
+    events = db.scalars(select(Event).order_by(Event.id))
+    data = [EventRead.model_validate(event).model_dump(mode="json") for event in events]
+    cache_set(redis_conn, EVENTS_LIST_KEY, json.dumps(data))
+    return data
 
 @app.get("/events/{event_id}")
-def get_event(event_id: int, db: Session = Depends(get_db)) -> EventRead:
-    event = db.get(Event, event_id)
-    if event is None:
-        raise HTTPException(status_code=404, detail="Event not found")
-    return event
+def get_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+    redis_conn: redis.Redis = Depends(get_redis),
+) -> EventRead:
+    key = event_key(event_id)
+    cached = cache_get(redis_conn, key)
+    if cached is not None:
+        return json.loads(cached)
+
+    event = get_event_or_404(event_id, db)
+    data = EventRead.model_validate(event).model_dump(mode="json")
+    cache_set(redis_conn, key, json.dumps(data))
+    return data
 
 @app.post("/events/{event_id}/registrations", status_code=201)
 def create_registration(
