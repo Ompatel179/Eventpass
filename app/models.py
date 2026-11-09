@@ -33,7 +33,7 @@ class Registration(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     event_id: Mapped[int] = mapped_column(ForeignKey("events.id"))
     user_id: Mapped[int] = mapped_column(
-        ForeignKey("users.id", name="registrations_user_id_fkey")
+        ForeignKey("users.id", name="registrations_user_id_fkey"), index=True
     )
     qr_token: Mapped[str] = mapped_column(default=generate_qr_token)
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
