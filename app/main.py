@@ -5,6 +5,7 @@ import logging
 import time
 import json
 import html
+import asyncio
 
 import qrcode
 from fastapi import Depends, FastAPI, HTTPException, Response,Request,BackgroundTasks, Query
@@ -29,6 +30,7 @@ from app.schemas import (
     CheckInRead,
     AttendanceRead,
 )
+from app.config import DB_MAX_OVERFLOW, DB_POOL_SIZE
 from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
 import redis
 from app.rate_limit import client_ip, enforce_rate_limit, get_redis
@@ -42,6 +44,12 @@ logging.basicConfig(
 logger = logging.getLogger("eventpass")
 
 app = FastAPI(title="EventPass API", version="0.6.0")
+db_slots = asyncio.Semaphore(DB_POOL_SIZE + DB_MAX_OVERFLOW)
+
+@app.middleware("http")
+async def limit_db_concurrency(request: Request, call_next):
+    async with db_slots:
+        return await call_next(request)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
