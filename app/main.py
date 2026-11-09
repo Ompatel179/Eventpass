@@ -4,14 +4,16 @@ import csv
 import logging
 import time
 import json
+import html
 
 import qrcode
-from fastapi import Depends, FastAPI, HTTPException, Response,Request
+from fastapi import Depends, FastAPI, HTTPException, Response,Request,BackgroundTasks
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
 from sqlalchemy import func,select,text
 from sqlalchemy.exc import IntegrityError,SQLAlchemyError
 from sqlalchemy.orm import Session
+from collections.abc import Callable 
 
 from app.database import get_db
 from app.models import Event, Registration, User, CheckIn
@@ -31,7 +33,7 @@ from app.security import create_access_token, hash_password, verify_password,get
 import redis
 from app.rate_limit import client_ip, enforce_rate_limit, get_redis
 from app.cache import EVENTS_LIST_KEY, cache_delete, cache_get, cache_set, event_key
-
+from app.emails import get_email_sender
 
 logging.basicConfig(
     level=logging.INFO,
@@ -60,6 +62,20 @@ def get_event_or_404(event_id: int, db: Session) -> Event:
     if event is None:
         raise HTTPException(status_code=404, detail="Event not found")
     return event
+
+def make_qr_png(qr_token: str) -> bytes:
+    image = qrcode.make(qr_token)
+    buffer = io.BytesIO()
+    image.save(buffer)
+    return buffer.getvalue()
+
+def ticket_email_html(event: Event) -> str:
+    when = event.starts_at.strftime("%b %d, %Y at %I:%M %p")
+    return (
+        f"<h2>You're registered for {html.escape(event.name)}</h2>"
+        f"<p>When: {when}<br>Where: {html.escape(event.location)}</p>"
+        "<p>Show the attached QR code at the door to check in.</p>"
+    )
 
 @app.get("/")
 def home() -> dict[str,str]:
@@ -126,10 +142,12 @@ def get_event(
 @app.post("/events/{event_id}/registrations", status_code=201)
 def create_registration(
     event_id: int,
+    background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
+    email_sender: Callable[..., None] = Depends(get_email_sender),
 ) -> TicketRead:
-    get_event_or_404(event_id, db)
+    event = get_event_or_404(event_id, db)
 
     registration = Registration(event_id=event_id, user_id=current_user.id)
     db.add(registration)
@@ -139,6 +157,15 @@ def create_registration(
         db.rollback()
         raise HTTPException(status_code=409, detail="You are already registered for this event")
     db.refresh(registration)
+
+    background_tasks.add_task(
+        email_sender,
+        to=current_user.email,
+        subject=f"Your ticket for {event.name}",
+        html=ticket_email_html(event),
+        attachment_name="ticket.png",
+        attachment=make_qr_png(registration.qr_token),
+    )
     return registration
 
 @app.get("/events/{event_id}/registrations",dependencies=[Depends(require_organizer)],
@@ -222,10 +249,7 @@ def get_my_qr_code(
     if registration is None or registration.user_id != current_user.id:
         raise HTTPException(status_code=404, detail="Registration not found")
 
-    image = qrcode.make(registration.qr_token)
-    buffer = io.BytesIO()
-    image.save(buffer)
-    return Response(content=buffer.getvalue(), media_type="image/png")
+    return Response(content=make_qr_png(registration.qr_token), media_type="image/png")
 
 @app.post("/events/{event_id}/check-ins", status_code=201)
 def check_in(
