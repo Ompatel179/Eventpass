@@ -7,7 +7,7 @@ import json
 import html
 
 import qrcode
-from fastapi import Depends, FastAPI, HTTPException, Response,Request,BackgroundTasks
+from fastapi import Depends, FastAPI, HTTPException, Response,Request,BackgroundTasks, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
 from sqlalchemy import func,select,text
@@ -32,7 +32,7 @@ from app.schemas import (
 from app.security import create_access_token, hash_password, verify_password,get_current_user,require_organizer
 import redis
 from app.rate_limit import client_ip, enforce_rate_limit, get_redis
-from app.cache import EVENTS_LIST_KEY, cache_delete, cache_get, cache_set, event_key
+from app.cache import bump_events_version, cache_get, cache_set, event_key, events_list_key
 from app.emails import get_email_sender
 
 logging.basicConfig(
@@ -106,21 +106,25 @@ def create_event(
     db.add(db_event)
     db.commit()
     db.refresh(db_event)
-    cache_delete(redis_conn, EVENTS_LIST_KEY)
+    bump_events_version(redis_conn)
     return db_event
 
 @app.get("/events")
 def list_events(
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
     redis_conn: redis.Redis = Depends(get_redis),
 ) -> list[EventRead]:
-    cached = cache_get(redis_conn, EVENTS_LIST_KEY)
+    key = events_list_key(redis_conn, limit, offset)
+    cached = cache_get(redis_conn, key) if key else None
     if cached is not None:
         return json.loads(cached)
 
-    events = db.scalars(select(Event).order_by(Event.id))
+    events = db.scalars(select(Event).order_by(Event.id).limit(limit).offset(offset))
     data = [EventRead.model_validate(event).model_dump(mode="json") for event in events]
-    cache_set(redis_conn, EVENTS_LIST_KEY, json.dumps(data))
+    if key:
+        cache_set(redis_conn, key, json.dumps(data))
     return data
 
 @app.get("/events/{event_id}")
@@ -168,9 +172,13 @@ def create_registration(
     )
     return registration
 
-@app.get("/events/{event_id}/registrations",dependencies=[Depends(require_organizer)],
-)
-def list_registrations(event_id: int, db: Session = Depends(get_db)) -> list[RegistrationRead]:
+@app.get("/events/{event_id}/registrations", dependencies=[Depends(require_organizer)])
+def list_registrations(
+    event_id: int,
+    limit: int = Query(default=50, ge=1, le=100),
+    offset: int = Query(default=0, ge=0),
+    db: Session = Depends(get_db),
+) -> list[RegistrationRead]:
     get_event_or_404(event_id, db)
 
     return list(
@@ -178,6 +186,8 @@ def list_registrations(event_id: int, db: Session = Depends(get_db)) -> list[Reg
             select(Registration)
             .where(Registration.event_id == event_id)
             .order_by(Registration.id)
+            .limit(limit)
+            .offset(offset)
         )
     )
 

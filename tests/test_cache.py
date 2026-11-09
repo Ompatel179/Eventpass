@@ -39,7 +39,10 @@ def test_new_event_appears_immediately(client, organizer_headers, event_id):
 def test_cached_entries_always_expire(client, event_id):
     client.get("/events")
     client.get(f"/events/{event_id}")
-    assert 0 < test_redis.ttl("cache:events:list") <= 60
+
+    list_keys = list(test_redis.scan_iter("cache:events:list:*"))
+    assert len(list_keys) == 1
+    assert 0 < test_redis.ttl(list_keys[0]) <= 60
     assert 0 < test_redis.ttl(f"cache:event:{event_id}") <= 60
 
 
