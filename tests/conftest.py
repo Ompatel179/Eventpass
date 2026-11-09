@@ -11,6 +11,7 @@ from app.models import User
 from app.security import hash_password
 import redis
 from app.rate_limit import get_redis
+from app.emails import get_email_sender
 
 TEST_DATABASE_URL = os.environ["TEST_DATABASE_URL"]
 assert "test" in TEST_DATABASE_URL, "Refusing to run tests against a non-test database"
@@ -55,11 +56,18 @@ def db():
     finally:
         session.close()
 
+@pytest.fixture
+def sent_emails() -> list[dict]:
+    return []
 
 @pytest.fixture
-def client():
+def client(sent_emails):
+    def fake_send_email(**email):
+        sent_emails.append(email)
+
     app.dependency_overrides[get_db] = override_get_db
-    app.dependency_overrides[get_redis] = lambda: test_redis 
+    app.dependency_overrides[get_redis] = lambda: test_redis
+    app.dependency_overrides[get_email_sender] = lambda: fake_send_email
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
