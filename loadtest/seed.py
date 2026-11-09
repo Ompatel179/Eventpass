@@ -6,7 +6,7 @@ from app.database import SessionLocal, engine
 from app.models import Event, Registration, User
 from app.security import hash_password
 
-STUDENTS = 2000
+STUDENTS = 10000
 ORGANIZERS = 50
 PASSWORD = "loadtest-password"
 OUTPUT = Path(__file__).parent / "data.json"
@@ -54,4 +54,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-    
