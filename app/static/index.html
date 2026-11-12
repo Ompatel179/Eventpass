@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EventPass | Campus event tickets</title>
+  <meta name="description" content="Find campus events, register in one click and check in with a QR code.">
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <div class="container">
+      <a class="logo" href="/">Event<span>Pass</span></a>
+      <div class="nav-links">
+        <a href="/#events" class="active">Events</a>
+        <a href="/#tickets" data-auth class="hidden">My tickets</a>
+        <a href="/organizer" data-organizer class="hidden">Organizer</a>
+        <a href="/scanner" data-organizer class="hidden">Scanner</a>
+      </div>
+      <div class="nav-auth" id="nav-auth"></div>
+    </div>
+  </nav>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <h1>Event check-in, <span>without the clipboard.</span></h1>
+        <p>Find campus events, register in one click, and get a QR ticket you show at the door. Organizers scan it with any phone.</p>
+        <div class="actions">
+          <a class="btn" href="#events">Browse events</a>
+          <a class="btn btn-light" href="#signup" id="hero-signup">Create an account</a>
+          <a class="btn btn-light hidden" href="#tickets" id="hero-tickets">My tickets</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Log in / sign up (only when logged out) -->
+    <section class="section section-alt" id="account">
+      <div class="container split">
+        <div>
+          <p class="eyebrow">Your account</p>
+          <h2>One account for every event</h2>
+          <p class="muted">Sign up once with your email, then register for any event in a single click.</p>
+          <ul>
+            <li>Your QR ticket appears instantly on this site.</li>
+            <li>Show it at the door; it's scanned in under a second.</li>
+            <li>Each ticket works once, so it can't be shared or reused.</li>
+          </ul>
+        </div>
+
+        <div class="form-card">
+          <div class="tabs" role="tablist">
+            <button class="tab active" id="tab-login" type="button" role="tab">Log in</button>
+            <button class="tab" id="tab-signup" type="button" role="tab">Sign up</button>
+          </div>
+
+          <form id="login-form">
+            <label for="login-email">Email</label>
+            <input id="login-email" type="email" autocomplete="email" required>
+            <label for="login-password">Password</label>
+            <input id="login-password" type="password" autocomplete="current-password" required>
+            <button class="btn btn-block" type="submit">Log in</button>
+          </form>
+
+          <form id="signup-form" class="hidden">
+            <label for="signup-email">Email</label>
+            <input id="signup-email" type="email" autocomplete="email" required>
+            <label for="signup-password">Password <span class="muted small">(at least 8 characters)</span></label>
+            <input id="signup-password" type="password" autocomplete="new-password" minlength="8" required>
+            <label for="signup-confirm">Confirm password</label>
+            <input id="signup-confirm" type="password" autocomplete="new-password" minlength="8" required>
+            <button class="btn btn-block" type="submit">Create account</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- Events -->
+    <section class="section" id="events">
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">What's on</p>
+            <h2>Events</h2>
+          </div>
+          <input id="search" class="search" type="search" placeholder="Search by name or place" aria-label="Search events">
+        </div>
+        <div class="grid" id="event-grid"></div>
+        <div class="empty hidden" id="events-empty">No events found.</div>
+        <div class="center">
+          <button class="btn btn-outline hidden" id="load-more" type="button">Load more events</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- My tickets (only when logged in) -->
+    <section class="section section-alt hidden" id="tickets" data-auth>
+      <div class="container">
+        <div class="section-head">
+          <div>
+            <p class="eyebrow">Show these at the door</p>
+            <h2>My tickets</h2>
+          </div>
+        </div>
+        <div class="grid" id="ticket-grid"></div>
+        <div class="empty hidden" id="tickets-empty">You haven't registered for anything yet. Pick an event above.</div>
+      </div>
+    </section>
+
+    <!-- How it works -->
+    <section class="section">
+      <div class="container">
+        <p class="eyebrow">How it works</p>
+        <h2>Three steps to the door</h2>
+        <div class="steps">
+          <div class="step">
+            <span class="step-num">1</span>
+            <h3>Create an account</h3>
+            <p>Sign up with your email in a few seconds.</p>
+          </div>
+          <div class="step">
+            <span class="step-num">2</span>
+            <h3>Register</h3>
+            <p>Pick an event and get your QR ticket instantly.</p>
+          </div>
+          <div class="step">
+            <span class="step-num">3</span>
+            <h3>Check in</h3>
+            <p>Show the code at the door. Staff scan it with a phone.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>&copy; EventPass</span>
+      <span><a href="/#events">Events</a><a href="/organizer">Organizers</a><a href="/docs">API</a></span>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+  <script>
+    const PAGE_SIZE = 12;
+    let offset = 0;
+    let allEvents = [];
+    let myTickets = new Map(); // event_id -> ticket
+    let qrUrls = [];
+    const eventCache = new Map();
+
+    // ---------- Log in / sign up ----------
+    function showTab(name) {
+      for (const tab of ["login", "signup"]) {
+        $(`tab-${tab}`).classList.toggle("active", tab === name);
+        show(`${tab}-form`, tab === name);
+      }
+    }
+
+    function afterAuth() {
+      location.href = safeNext() || "/#tickets";
+    }
+
+    $("tab-login").addEventListener("click", () => showTab("login"));
+    $("tab-signup").addEventListener("click", () => showTab("signup"));
+
+    $("login-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const button = event.submitter;
+      button.disabled = true;
+      try {
+        await logIn($("login-email").value.trim(), $("login-password").value);
+        afterAuth();
+      } catch (error) {
+        showMessage(error.message, "bad");
+        button.disabled = false;
+      }
+    });
+
+    $("signup-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      if ($("signup-password").value !== $("signup-confirm").value) {
+        showMessage("The two passwords don't match.", "bad");
+        return;
+      }
+      const button = event.submitter;
+      button.disabled = true;
+      try {
+        await signUp($("signup-email").value.trim(), $("signup-password").value);
+        afterAuth();
+      } catch (error) {
+        showMessage(error.message, "bad");
+        button.disabled = false;
+      }
+    });
+
+    function handleHash() {
+      if (currentUser) return;
+      if (location.hash === "#signup") {
+        showTab("signup");
+        $("account").scrollIntoView();
+      } else if (location.hash === "#account") {
+        showTab("login");
+        $("account").scrollIntoView();
+      }
+    }
+    window.addEventListener("hashchange", handleHash);
+
+    // ---------- Events ----------
+    async function loadEvents() {
+      const button = $("load-more");
+      button.disabled = true;
+      try {
+        const response = await api(`/events?limit=${PAGE_SIZE}&offset=${offset}`);
+        if (!response.ok) throw new Error(await errorMessage(response));
+        const page = await response.json();
+        allEvents.push(...page);
+        offset += page.length;
+        show("load-more", page.length === PAGE_SIZE);
+        renderEvents();
+      } catch (error) {
+        showMessage(error.message || "Couldn't load events.", "bad");
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function renderEvents() {
+      const query = $("search").value.trim().toLowerCase();
+      const list = sortEvents(allEvents).filter((ev) =>
+        !query || ev.name.toLowerCase().includes(query) || ev.location.toLowerCase().includes(query)
+      );
+      $("event-grid").replaceChildren(...list.map(eventCard));
+      show("events-empty", list.length === 0);
+    }
+
+    function eventCard(ev) {
+      const past = isPast(ev);
+      let action;
+      if (myTickets.has(ev.id)) {
+        action = el("a", { class: "btn btn-dark btn-sm", href: "#tickets" }, "Registered: view ticket");
+      } else if (past) {
+        action = el("button", { class: "btn btn-outline btn-sm", disabled: true }, "Event ended");
+      } else {
+        action = el("button", { class: "btn btn-sm", onclick: (e) => register(ev, e.currentTarget) }, "Register");
+      }
+      return el("article", { class: "card" },
+        el("span", { class: "date-chip" }, formatDay(ev.starts_at)),
+        el("h3", {}, ev.name),
+        el("p", { class: "meta" }, el("strong", {}, "When: "), formatTime(ev.starts_at)),
+        el("p", { class: "meta" }, el("strong", {}, "Where: "), ev.location),
+        el("p", { class: "meta" }, el("strong", {}, "Capacity: "), ev.capacity),
+        past ? el("span", { class: "badge" }, "Ended") : null,
+        el("div", { class: "card-actions" }, action),
+      );
+    }
+
+    async function register(ev, button) {
+      if (!currentUser) {
+        showMessage("Log in or create an account to register.", "warn");
+        showTab("login");
+        $("account").scrollIntoView({ behavior: "smooth" });
+        return;
+      }
+      button.disabled = true;
+      button.textContent = "Registering...";
+      try {
+        const response = await api(`/events/${ev.id}/registrations`, { method: "POST" });
+        if (response.status === 201) {
+          showMessage(`You're registered for ${ev.name}. Your ticket is below.`, "ok");
+        } else if (response.status === 409) {
+          showMessage("You're already registered for this event.", "warn");
+        } else {
+          throw new Error(await errorMessage(response));
+        }
+        await loadTickets();
+        renderEvents();
+        $("tickets").scrollIntoView({ behavior: "smooth" });
+      } catch (error) {
+        showMessage(error.message, "bad");
+        button.disabled = false;
+        button.textContent = "Register";
+      }
+    }
+
+    $("search").addEventListener("input", renderEvents);
+    $("load-more").addEventListener("click", loadEvents);
+
+    // ---------- My tickets ----------
+    async function getEvent(id) {
+      const known = allEvents.find((ev) => ev.id === id);
+      if (known) return known;
+      if (eventCache.has(id)) return eventCache.get(id);
+      const response = await api(`/events/${id}`);
+      const ev = response.ok ? await response.json() : null;
+      eventCache.set(id, ev);
+      return ev;
+    }
+
+    async function loadTickets() {
+      try {
+        const response = await api("/me/registrations");
+        if (!response.ok) throw new Error(await errorMessage(response));
+        const tickets = await response.json();
+        myTickets = new Map(tickets.map((t) => [t.event_id, t]));
+
+        qrUrls.forEach((url) => URL.revokeObjectURL(url));
+        qrUrls = [];
+        const cards = await Promise.all([...tickets].reverse().map(ticketCard));
+        $("ticket-grid").replaceChildren(...cards);
+        show("tickets-empty", tickets.length === 0);
+      } catch (error) {
+        showMessage(error.message || "Couldn't load your tickets.", "bad");
+      }
+    }
+
+    async function ticketCard(ticket) {
+      const ev = await getEvent(ticket.event_id);
+      const card = el("article", { class: "card ticket" },
+        el("span", { class: "date-chip" }, ev ? formatDay(ev.starts_at) : "Event"),
+        el("h3", {}, ev ? ev.name : `Event #${ticket.event_id}`),
+        ev ? el("p", { class: "meta" }, formatTime(ev.starts_at), " · ", ev.location) : null,
+      );
+      try {
+        const url = await fetchBlobUrl(`/me/registrations/${ticket.id}/qr`);
+        qrUrls.push(url);
+        card.append(
+          el("img", { src: url, alt: `QR ticket for ${ev ? ev.name : "this event"}`, width: 200, height: 200 }),
+          el("a", { class: "btn btn-outline btn-sm", href: url, download: `eventpass-ticket-${ticket.id}.png` }, "Download QR"),
+        );
+      } catch {
+        card.append(el("p", { class: "muted" }, "QR code unavailable. Refresh to try again."));
+      }
+      card.append(
+        ev && isPast(ev) ? el("span", { class: "badge" }, "Event ended") : null,
+        el("p", { class: "muted small" }, `Ticket #${ticket.id} · show this at the door`),
+        el("p", { class: "code" }, `Backup code: ${ticket.qr_token}`),
+      );
+      return card;
+    }
+
+    // ---------- Start ----------
+    async function init() {
+      await loadMe();
+      renderNav();
+      const loggedIn = currentUser !== null;
+      show("account", !loggedIn);
+      show("hero-signup", !loggedIn);
+      show("hero-tickets", loggedIn);
+
+      await loadEvents();
+      if (loggedIn) {
+        await loadTickets();
+        renderEvents();
+      }
+
+      if (!loggedIn && safeNext()) showMessage("Please log in to continue.", "warn");
+      if (location.hash) {
+        handleHash();
+        if (loggedIn && location.hash === "#tickets") $("tickets").scrollIntoView();
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>

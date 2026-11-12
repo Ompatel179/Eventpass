@@ -4,132 +4,211 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>EventPass Scanner</title>
+  <link rel="stylesheet" href="/static/style.css">
   <script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
-  <style>
-    body { font-family: system-ui, sans-serif; max-width: 480px; margin: 0 auto; padding: 16px; }
-    section { margin-bottom: 24px; }
-    input, select, button { width: 100%; padding: 12px; margin-top: 8px; font-size: 16px; box-sizing: border-box; }
-    #result { padding: 24px; border-radius: 12px; text-align: center; font-size: 22px; font-weight: bold; }
-    .ok { background: #c8f7c5; color: #14532d; }
-    .warn { background: #fde68a; color: #78350f; }
-    .bad { background: #fecaca; color: #7f1d1d; }
-    .hidden { display: none; }
-  </style>
 </head>
 <body>
-  <h1>EventPass Scanner</h1>
+  <nav class="site-nav">
+    <div class="container">
+      <a class="logo" href="/">Event<span>Pass</span></a>
+      <div class="nav-links">
+        <a href="/#events">Events</a>
+        <a href="/#tickets" data-auth class="hidden">My tickets</a>
+        <a href="/organizer" data-organizer class="hidden">Organizer</a>
+        <a href="/scanner" data-organizer class="hidden active">Scanner</a>
+      </div>
+      <div class="nav-auth" id="nav-auth"></div>
+    </div>
+  </nav>
 
-  <section id="login-section">
-    <h2>1. Organizer login</h2>
-    <form id="login-form">
-      <input id="email" type="email" placeholder="Email" required>
-      <input id="password" type="password" placeholder="Password" required>
-      <button type="submit">Log in</button>
-    </form>
-  </section>
+  <main>
+    <header class="page-head">
+      <div class="container">
+        <div>
+          <h1>Door scanner</h1>
+          <p>Point the camera at a ticket. Green means let them in.</p>
+        </div>
+      </div>
+    </header>
 
-  <section id="scan-section" class="hidden">
-    <h2>2. Pick an event</h2>
-    <select id="event-select"></select>
+    <section class="section hidden" id="gate">
+      <div class="container">
+        <div class="empty">
+          <h2>Organizer access only</h2>
+          <p id="gate-text"></p>
+          <a class="btn" id="gate-button" href="/">Go to events</a>
+        </div>
+      </div>
+    </section>
 
-    <h2>3. Scan tickets</h2>
-    <button id="start-button">Start camera</button>
-    <div id="reader"></div>
+    <section class="section hidden" id="scanner">
+      <div class="container scanner-wrap">
+        <label for="event-select">Event</label>
+        <select id="event-select"></select>
 
-    <form id="manual-form">
-      <input id="manual-token" placeholder="Or type a ticket code" required>
-      <button type="submit">Check in</button>
-    </form>
-  </section>
+        <div class="counter" style="margin-top: 16px">
+          <span>Checked in</span>
+          <span><strong id="count-checked">0</strong> / <span id="count-registered">0</span> registered</span>
+        </div>
 
-  <div id="result" class="hidden"></div>
+        <div class="scan-result idle" id="result">Ready to scan</div>
 
+        <div class="row-buttons">
+          <button class="btn btn-block" id="start-button" type="button">Start camera</button>
+          <button class="btn btn-dark btn-block hidden" id="stop-button" type="button">Stop camera</button>
+        </div>
+        <div id="reader"></div>
+
+        <form id="manual-form">
+          <label for="manual-code">Or type the ticket's backup code</label>
+          <div class="inline-form">
+            <input id="manual-code" placeholder="Backup code" autocomplete="off" required>
+            <button class="btn" type="submit">Check in</button>
+          </div>
+        </form>
+
+        <h3 style="margin-top: 32px">Recent scans</h3>
+        <ul class="recent" id="recent"></ul>
+        <p class="muted small" id="recent-empty">Nothing scanned yet.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>&copy; EventPass</span>
+      <span><a href="/organizer">Dashboard</a><a href="/#events">Events</a></span>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
   <script>
-    let token = null;
+    let camera = null;
     let busy = false;
+    let lastCode = "";
+    let lastCodeAt = 0;
 
-    const result = document.getElementById("result");
-
-    function showResult(message, kind) {
-      result.textContent = message;
-      result.className = kind;
+    function setResult(text, kind) {
+      const box = $("result");
+      box.textContent = text;
+      box.className = `scan-result ${kind}`;
     }
 
-    async function api(path, options = {}) {
-      const headers = options.headers || {};
-      if (token) headers["Authorization"] = `Bearer ${token}`;
-      return fetch(path, { ...options, headers });
+    function addRecent(text, kind) {
+      const time = new Date().toLocaleTimeString(undefined, { timeStyle: "short" });
+      const badgeClass = kind === "ok" ? "badge badge-ok" : kind === "bad" ? "badge badge-crimson" : "badge";
+      $("recent").prepend(el("li", {}, el("span", { class: badgeClass }, text), el("span", { class: "muted" }, time)));
+      while ($("recent").children.length > 10) $("recent").lastChild.remove();
+      show("recent-empty", false);
     }
 
-    document.getElementById("login-form").addEventListener("submit", async (event) => {
-      event.preventDefault();
-      const response = await fetch("/auth/login", {
-        method: "POST",
-        body: new URLSearchParams({
-          username: document.getElementById("email").value,
-          password: document.getElementById("password").value,
-        }),
-      });
-      if (response.status === 429) {
-        showResult("Too many attempts: wait a minute", "warn");
-        return;
+    function eventId() {
+      return $("event-select").value;
+    }
+
+    async function refreshCount() {
+      if (!eventId()) return;
+      try {
+        const response = await api(`/events/${eventId()}/attendance`);
+        if (!response.ok) return;
+        const data = await response.json();
+        $("count-checked").textContent = data.checked_in;
+        $("count-registered").textContent = data.registered;
+      } catch {
+        // The counter is a nice-to-have; scanning still works without it.
       }
-      if (!response.ok) {
-        showResult("Wrong email or password", "bad");
-        return;
-      }
-      token = (await response.json()).access_token;
-      await loadEvents();
-      document.getElementById("login-section").classList.add("hidden");
-      document.getElementById("scan-section").classList.remove("hidden");
-      result.className = "hidden";
-    });
+    }
 
     async function loadEvents() {
-      const events = await (await api("/events")).json();
-      const select = document.getElementById("event-select");
-      for (const ev of events) {
-        const option = document.createElement("option");
-        option.value = ev.id;
-        option.textContent = `${ev.name} (#${ev.id})`;
-        select.append(option);
-      }
+      const response = await api("/events?limit=100");
+      if (!response.ok) throw new Error(await errorMessage(response));
+      const events = sortEvents(await response.json());
+      const wanted = new URLSearchParams(location.search).get("event");
+      $("event-select").replaceChildren(...events.map((ev) =>
+        el("option", { value: ev.id, selected: String(ev.id) === wanted },
+          `${ev.name} (${formatDay(ev.starts_at)})${isPast(ev) ? " - ended" : ""}`)
+      ));
+      if (!events.length) setResult("No events yet. Create one on the dashboard.", "idle");
     }
 
-    async function checkIn(qrToken) {
-      if (busy) return;
+    async function checkIn(code) {
+      code = code.trim();
+      if (!code || busy || !eventId()) return;
+      // The camera sees the same code many times a second: ignore repeats for 3 s.
+      if (code === lastCode && Date.now() - lastCodeAt < 3000) return;
+      lastCode = code;
+      lastCodeAt = Date.now();
+
       busy = true;
-      const eventId = document.getElementById("event-select").value;
       try {
-        const response = await api(`/events/${eventId}/check-ins`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ qr_token: qrToken }),
-        });
-        if (response.status === 201) showResult("✅ Checked in", "ok");
-        else if (response.status === 409) showResult("⚠️ Already checked in", "warn");
-        else if (response.status === 404) showResult("❌ Not valid for this event", "bad");
-        else if (response.status === 401) showResult("Session expired: reload and log in", "bad");
-        else showResult(`Error ${response.status}`, "bad");
-      } catch {
-        showResult("Network error: try again", "bad");
+        const response = await api(`/events/${eventId()}/check-ins`, { method: "POST", json: { qr_token: code } });
+        if (response.status === 201) { setResult("Checked in. Welcome!", "ok"); addRecent("Checked in", "ok"); }
+        else if (response.status === 409) { setResult("Already checked in", "warn"); addRecent("Duplicate", "warn"); }
+        else if (response.status === 404) { setResult("Not a ticket for this event", "bad"); addRecent("Invalid", "bad"); }
+        else { setResult(await errorMessage(response), "bad"); addRecent("Error", "bad"); }
+        refreshCount();
+      } catch (error) {
+        setResult(error.message === "Failed to fetch" ? "Network error. Try again." : error.message, "bad");
       } finally {
-        setTimeout(() => { busy = false; }, 2000);
+        setTimeout(() => { busy = false; }, 1500);
       }
     }
 
-    document.getElementById("start-button").addEventListener("click", () => {
-      const scanner = new Html5Qrcode("reader");
-      scanner
-        .start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (decodedText) => checkIn(decodedText))
-        .catch(() => showResult("Camera not available", "bad"));
-      document.getElementById("start-button").classList.add("hidden");
+    $("start-button").addEventListener("click", async () => {
+      camera = new Html5Qrcode("reader");
+      try {
+        await camera.start({ facingMode: "environment" }, { fps: 10, qrbox: 250 }, (text) => checkIn(text));
+        show("start-button", false);
+        show("stop-button", true);
+        setResult("Scanning...", "idle");
+      } catch {
+        setResult("Camera not available. Allow camera access, or type the code below.", "bad");
+      }
     });
 
-    document.getElementById("manual-form").addEventListener("submit", (event) => {
-      event.preventDefault();
-      checkIn(document.getElementById("manual-token").value.trim());
+    $("stop-button").addEventListener("click", async () => {
+      if (camera) await camera.stop();
+      show("stop-button", false);
+      show("start-button", true);
+      setResult("Camera stopped", "idle");
     });
+
+    $("event-select").addEventListener("change", () => {
+      setResult("Ready to scan", "idle");
+      refreshCount();
+    });
+
+    $("manual-form").addEventListener("submit", (event) => {
+      event.preventDefault();
+      lastCode = ""; // typed codes are always sent
+      checkIn($("manual-code").value);
+      $("manual-code").value = "";
+    });
+
+    async function init() {
+      await loadMe();
+      renderNav();
+      if (!isOrganizer()) {
+        show("gate", true);
+        if (!currentUser) {
+          $("gate-text").textContent = "Log in with an organizer account to scan tickets.";
+          $("gate-button").textContent = "Log in";
+          $("gate-button").href = `/?next=${encodeURIComponent(location.pathname + location.search)}#account`;
+        } else {
+          $("gate-text").textContent = `You're logged in as ${currentUser.email}, which is a student account.`;
+        }
+        return;
+      }
+      show("scanner", true);
+      try {
+        await loadEvents();
+        refreshCount();
+      } catch (error) {
+        setResult(error.message, "bad");
+      }
+    }
+
+    init();
   </script>
 </body>
 </html>

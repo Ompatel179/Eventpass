@@ -11,6 +11,7 @@ import qrcode
 from fastapi import Depends, FastAPI, HTTPException, Response,Request,BackgroundTasks, Query
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy import func,select,text
 from sqlalchemy.exc import IntegrityError,SQLAlchemyError
 from sqlalchemy.orm import Session
@@ -85,9 +86,7 @@ def ticket_email_html(event: Event) -> str:
         "<p>Show the attached QR code at the door to check in.</p>"
     )
 
-@app.get("/")
-def home() -> dict[str,str]:
-    return {"message": "Welcome to EventPass!"}
+
 
 @app.get("/health")
 def health(db: Session = Depends(get_db)) -> dict[str, str]:
@@ -98,6 +97,18 @@ def health(db: Session = Depends(get_db)) -> dict[str, str]:
     return {"status": "ok"}
 
 STATIC_DIR = Path(__file__).parent / "static"
+app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+
+@app.get("/", include_in_schema=False)
+def home_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "index.html")
+
+
+@app.get("/organizer", include_in_schema=False)
+def organizer_page() -> FileResponse:
+    return FileResponse(STATIC_DIR / "organizer.html")
+
 
 @app.get("/scanner", include_in_schema=False)
 def scanner_page() -> FileResponse:
