@@ -78,7 +78,7 @@ def make_qr_png(qr_token: str) -> bytes:
     return buffer.getvalue()
 
 def ticket_email_html(event: Event) -> str:
-    when = event.starts_at.strftime("%b %d, %Y at %I:%M %p")
+    when = event.starts_at.strftime("%b %d, %Y at %I:%M %p UTC")
     return (
         f"<h2>You're registered for {html.escape(event.name)}</h2>"
         f"<p>When: {when}<br>Where: {html.escape(event.location)}</p>"

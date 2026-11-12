@@ -4,7 +4,7 @@ from app.emails import send_email
 
 EVIL_EVENT = {
     "name": "<script>alert(1)</script>",
-    "starts_at": "2030-01-01T18:00:00",
+    "starts_at": "2030-01-01T18:00:00Z",
     "location": "Room 101",
     "capacity": 50,
 }

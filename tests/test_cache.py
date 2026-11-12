@@ -7,7 +7,7 @@ from tests.conftest import test_redis
 
 NEW_EVENT = {
     "name": "Second Event",
-    "starts_at": "2030-02-01T18:00:00",
+    "starts_at": "2030-02-01T18:00:00Z",
     "location": "Room 202",
     "capacity": 30,
 }

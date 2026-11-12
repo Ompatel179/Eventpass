@@ -104,7 +104,7 @@ def event_id(client, organizer_headers) -> int:
         "/events",
         json={
             "name": "Test Event",
-            "starts_at": "2030-01-01T18:00:00",
+            "starts_at": "2030-01-01T18:00:00Z",
             "location": "Room 101",
             "capacity": 50,
         },
