@@ -58,3 +58,27 @@ def test_organizer_list_hides_qr_tokens(client, organizer_headers, event_id, tic
 def test_student_cannot_list_registrations(client, student_headers, event_id):
     response = client.get(f"/events/{event_id}/registrations", headers=student_headers)
     assert response.status_code == 403
+
+def make_event(client, organizer_headers, capacity):
+    response = client.post(
+        "/events",
+        json={"name": "Tiny Event", "starts_at": "2030-05-01T18:00:00Z", "location": "Room 1", "capacity": capacity},
+        headers=organizer_headers,
+    )
+    return response.json()["id"]
+
+
+def test_full_event_rejects_registration(client, organizer_headers, student_headers, other_student_headers):
+    tiny = make_event(client, organizer_headers, capacity=1)
+    first = client.post(f"/events/{tiny}/registrations", headers=student_headers)
+    second = client.post(f"/events/{tiny}/registrations", headers=other_student_headers)
+    assert first.status_code == 201
+    assert second.status_code == 409
+    assert second.json()["detail"] == "Event is full"
+
+
+def test_already_registered_wins_over_full(client, organizer_headers, student_headers):
+    tiny = make_event(client, organizer_headers, capacity=1)
+    client.post(f"/events/{tiny}/registrations", headers=student_headers)
+    again = client.post(f"/events/{tiny}/registrations", headers=student_headers)
+    assert again.json()["detail"] == "You are already registered for this event"

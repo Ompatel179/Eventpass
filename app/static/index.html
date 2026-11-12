@@ -269,7 +269,8 @@
         if (response.status === 201) {
           showMessage(`You're registered for ${ev.name}. Your ticket is below.`, "ok");
         } else if (response.status === 409) {
-          showMessage("You're already registered for this event.", "warn");
+          // Either "already registered" or "Event is full": show the API's own words.
+          showMessage(await errorMessage(response), "warn");
         } else {
           throw new Error(await errorMessage(response));
         }
@@ -331,8 +332,8 @@
       } catch {
         card.append(el("p", { class: "muted" }, "QR code unavailable. Refresh to try again."));
       }
+      if (ev && isPast(ev)) card.append(el("span", { class: "badge" }, "Event ended"));
       card.append(
-        ev && isPast(ev) ? el("span", { class: "badge" }, "Event ended") : null,
         el("p", { class: "muted small" }, `Ticket #${ticket.id} · show this at the door`),
         el("p", { class: "code" }, `Backup code: ${ticket.qr_token}`),
       );
