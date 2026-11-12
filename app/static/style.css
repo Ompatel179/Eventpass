@@ -249,7 +249,7 @@ td strong { overflow-wrap: anywhere; }
 .scan-result.bad { background: var(--crimson-light); color: var(--crimson-dark); }
 .scan-result.idle { background: var(--gray-100); color: var(--gray-600); font-size: 18px; font-weight: 600; }
 #reader { margin: 16px 0; overflow: hidden; border-radius: var(--radius); }
-.counter { display: flex; justify-content: space-between; gap: 12px; padding: 14px 18px; border-radius: var(--radius); background: var(--black); color: var(--white); font-weight: 600; }
+.counter { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 14px 18px; border-radius: var(--radius); background: var(--black); color: var(--white); font-weight: 600; }
 .counter strong { color: var(--crimson-bright); font-size: 22px; }
 .recent { padding: 0; list-style: none; }
 .recent li { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--gray-300); font-size: 14px; }

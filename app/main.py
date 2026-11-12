@@ -170,7 +170,25 @@ def create_registration(
     db: Session = Depends(get_db),
     email_sender: Callable[..., None] = Depends(get_email_sender),
 ) -> TicketRead:
-    event = get_event_or_404(event_id, db)
+    # Lock this event's row so two people can't both take the last seat.
+    event = db.scalar(select(Event).where(Event.id == event_id).with_for_update())
+    if event is None:
+        raise HTTPException(status_code=404, detail="Event not found")
+
+    already = db.scalar(
+        select(Registration.id).where(
+            Registration.event_id == event_id,
+            Registration.user_id == current_user.id,
+        )
+    )
+    if already is not None:
+        raise HTTPException(status_code=409, detail="You are already registered for this event")
+
+    taken = db.scalar(
+        select(func.count()).select_from(Registration).where(Registration.event_id == event_id)
+    )
+    if taken >= event.capacity:
+        raise HTTPException(status_code=409, detail="Event is full")
 
     registration = Registration(event_id=event_id, user_id=current_user.id)
     db.add(registration)

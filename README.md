@@ -1,15 +1,26 @@
 # EventPass
 
-QR-code event check-in for student clubs. Students register and get a QR ticket; organizers scan tickets at the door from a phone browser, and every ticket can be checked in exactly once — even when several organizers scan at the same moment.
+QR-code event check-in for student clubs. Students sign up on the website, register for events and get a QR ticket; organizers create events, watch live attendance and scan tickets at the door from a phone browser. Every ticket can be checked in exactly once — even when several organizers scan at the same moment.
 
 **Live demo:** available on request (hosted on Render + Neon free tier; the first request after idle takes ~1 minute to wake up).
+
+## Screenshots
+
+| Events (public site) | My tickets |
+|---|---|
+| ![Public events page](docs/screenshots/events.png) | ![Student ticket with QR code](docs/screenshots/tickets.png) |
+
+| Organizer dashboard | Door scanner (phone) |
+|---|---|
+| ![Organizer dashboard](docs/screenshots/organizer.png) | ![Phone scanner](docs/screenshots/scanner.png) |
 
 ## Highlights
 
 - **Race-safe check-in** — a database unique constraint (not application code) guarantees one check-in per ticket. Under load, 2,862 concurrent scans of 2,000 tickets produced **0 duplicates**.
 - **Found and fixed a production-style deadlock** with load testing (details below): the API froze at 13 req/s under load; after the fix it served **~950 req/s with 0 errors** on a single worker.
 - **Indexed by evidence** — `EXPLAIN ANALYZE` on a 1M-row table showed a sequential scan; one index cut the query from **16.2 ms to 0.08 ms**.
-- **76 automated tests, 98% line coverage**, run by GitHub Actions on every pull request; `main` is protected and only accepts green PRs.
+- **A complete website on the same API** — public event listing, sign-up, QR tickets, an organizer dashboard (live counts, attendee list, CSV export, manual check-in) and a phone scanner, in plain HTML/CSS/JavaScript served by FastAPI.
+- **82 automated tests, 97% line coverage**, run by GitHub Actions on every pull request; `main` is protected and only accepts green PRs.
 
 ## Tech stack
 
@@ -19,7 +30,7 @@ QR-code event check-in for student clubs. Students register and get a QR ticket;
 | Data | PostgreSQL 16, SQLAlchemy 2, Alembic migrations |
 | Cache / rate limits | Redis |
 | Auth | JWT bearer tokens, Argon2 password hashing, student / organizer roles |
-| Frontend | Plain HTML + JavaScript scanner page (`/scanner`) using the phone camera |
+| Frontend | Plain HTML, CSS and JavaScript (no framework): public site `/`, organizer dashboard `/organizer`, phone scanner `/scanner` (camera via html5-qrcode) |
 | Testing | pytest, Locust (load testing) |
 | DevOps | Docker, Docker Compose, GitHub Actions, Render (app + Redis), Neon (Postgres) |
 
@@ -27,18 +38,20 @@ QR-code event check-in for student clubs. Students register and get a QR ticket;
 
 ```mermaid
 flowchart LR
-    Phone["Organizer phone<br/>/scanner page"] -->|HTTPS| API["FastAPI app<br/>(Docker on Render)"]
-    Student["Student"] -->|HTTPS| API
+    Student["Student browser<br/>/ (events, tickets)"] -->|HTTPS| API["FastAPI app<br/>pages + JSON API<br/>(Docker on Render)"]
+    Organizer["Organizer browser<br/>/organizer"] -->|HTTPS| API
+    Phone["Organizer phone<br/>/scanner"] -->|HTTPS| API
     API --> PG[("PostgreSQL<br/>Neon")]
     API --> Redis[("Redis<br/>rate limits + cache")]
 ```
 
 ## How it works
 
-1. A student signs up, logs in, and registers for an event. The API returns a ticket with a random, unguessable QR token (and prepares a ticket email in the background).
-2. At the door, an organizer opens `/scanner` on their phone, logs in, picks the event, and points the camera at the student's QR code.
-3. The API inserts a check-in row. **201** = welcome in, **409** = this ticket was already used, **404** = not a ticket for this event.
-4. Organizers can see live attendance numbers and export a CSV of attendees.
+1. An organizer creates an event on `/organizer`. Times are entered in the organizer's local time, sent as UTC, and stored as `timestamptz`; every visitor sees them in their own time zone.
+2. A student signs up on `/`, registers with one click, and gets a ticket with a random, unguessable QR token under **My tickets** (a ticket email is also prepared in the background).
+3. At the door, an organizer opens `/scanner` on a phone, picks the event, and points the camera at the student's QR code.
+4. The API inserts a check-in row. **201** = welcome in, **409** = this ticket was already used, **404** = not a ticket for this event.
+5. The dashboard shows live registered / checked-in counts, the attendee list, and a CSV export.
 
 ## Performance (measured)
 
@@ -78,6 +91,7 @@ Confirmed by experiment (a pool larger than the thread count made the freeze dis
 | Decision | Why | Trade-off |
 |---|---|---|
 | Unique constraint enforces one check-in per ticket | The database is the only place that sees every concurrent request | Duplicate scans surface as a caught `IntegrityError` → 409 |
+| Capacity enforced under a row lock (`SELECT ... FOR UPDATE` on the event) | "Count, then insert" lets two people take the last seat at the same moment; the lock makes registrations for one event take turns | Registrations for the same event wait briefly for each other; a counter column with a conditional `UPDATE` would avoid waiting but needs a migration |
 | Sign-up always creates a student; organizers are promoted separately | Clients must never choose their own privileges | Needs an admin step (SQL for now) |
 | Redis fixed-window rate limits on login (per email + per IP) and sign-up | Stops password guessing before the slow Argon2 check runs | Fixed windows allow short bursts at window edges |
 | Client IP from `CF-Connecting-IP` | Render sits behind Cloudflare, which overwrites this header; `X-Forwarded-For` can be spoofed | Tied to the hosting setup |
@@ -86,6 +100,11 @@ Confirmed by experiment (a pool larger than the thread count made the freeze dis
 | Background tasks for ticket emails | The student gets a response immediately | A task is lost if the server restarts at that moment (no retry queue); no email provider is connected yet, so emails are only logged |
 | `limit`/`offset` pagination (max 100) | Simple and enough at this size | Large offsets get slower; keyset pagination would scale better |
 | `pool_pre_ping=True` | Neon closes idle connections; this checks a connection before using it | One tiny extra query per checkout |
+| All times are `timestamptz`; the API rejects times without a zone (422) and answers in UTC | A time without a zone is ambiguous once users are in different places | A breaking API change (clients must send a zone) |
+| FastAPI serves the website itself (plain HTML/JS, no framework) | Same origin: no CORS, one deploy, nothing to build | No component reuse or client-side routing; fine at this size |
+| Token kept in `sessionStorage` | Cleared when the tab closes (safer on shared lab computers than `localStorage`) | Readable by JavaScript; an `httpOnly` cookie would be safer but needs CSRF protection |
+| Page data is inserted with `textContent`, never `innerHTML` | User-supplied text (event names) can't run as script (XSS) | Building elements in code is more verbose than HTML strings |
+| QR codes and CSVs are fetched with `fetch` and shown as blobs | These endpoints need the bearer token, which a plain `<img src>` link can't send | Slightly more JavaScript |
 
 ## Running locally
 
@@ -97,7 +116,7 @@ cp .env.example .env
 docker compose up --build
 ```
 
-Open <http://localhost:8000/docs> for the interactive API and <http://localhost:8000/scanner> for the scanner page. To make an account an organizer:
+Open <http://localhost:8000> for the website (sign up there), <http://localhost:8000/organizer> for the organizer dashboard, and <http://localhost:8000/docs> for the interactive API. New accounts are students; to make one an organizer:
 
 ```bash
 docker compose exec db psql -U eventpass -d eventpass -c "UPDATE users SET role = 'organizer' WHERE email = 'you@example.com';"
@@ -123,7 +142,7 @@ python -m pytest -q
 | GET | `/events` | anyone | List events (`limit`, `offset`; cached) |
 | POST | `/events` | organizer | Create an event |
 | GET | `/events/{id}` | anyone | One event (cached) |
-| POST | `/events/{id}/registrations` | student | Register and get a QR ticket |
+| POST | `/events/{id}/registrations` | student | Register and get a QR ticket (409 if already registered or full) |
 | GET | `/events/{id}/registrations` | organizer | Registrations for an event (paginated) |
 | GET | `/me/registrations` | logged in | My tickets |
 | GET | `/me/registrations/{id}/qr` | ticket owner | Ticket QR code as PNG |
@@ -131,7 +150,15 @@ python -m pytest -q
 | GET | `/events/{id}/attendance` | organizer | Capacity, registered, checked-in counts |
 | GET | `/events/{id}/attendees.csv` | organizer | CSV export |
 | GET | `/health` | anyone | Liveness + database check (503 if the DB is down) |
-| GET | `/scanner` | anyone | Phone scanner page |
+
+**Web pages** (served by the same app; the pages themselves are public, the data behind them needs a login):
+
+| Path | Page |
+|---|---|
+| `/` | Public site: events, log in / sign up, register, my QR tickets |
+| `/organizer` | Organizer dashboard: create events, live counts, attendees, CSV, manual check-in |
+| `/scanner` | Phone scanner for the door |
+| `/static/*` | Shared CSS and JavaScript |
 
 ## Deployment
 
@@ -139,8 +166,9 @@ Pushing to `main` (only possible through a pull request with passing CI) trigger
 
 ## Limitations and next steps
 
-- A student/organizer web UI (today only the scanner page has a UI; everything else uses `/docs`)
-- Store event times as `timestamptz` (time-zone aware) before building the UI
-- Connect an email provider (required for password reset)
+- Prove the capacity lock under real concurrency (e.g. 50 Locust users racing for 10 seats should give exactly 10)
+- The dashboard asks for each event's counts separately; a single summary endpoint would scale better
+- Organizer promotion is a SQL step; an admin page would replace it
+- Connect an email provider (required for ticket emails and password reset)
 - Password reset
 - Use it at a real club meeting and report real-world numbers
