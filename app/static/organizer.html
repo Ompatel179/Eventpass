@@ -1,0 +1,436 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Organizer dashboard | EventPass</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <nav class="site-nav">
+    <div class="container">
+      <a class="logo" href="/">Event<span>Pass</span></a>
+      <div class="nav-links">
+        <a href="/#events">Events</a>
+        <a href="/#tickets" data-auth class="hidden">My tickets</a>
+        <a href="/organizer" data-organizer class="hidden active">Organizer</a>
+        <a href="/scanner" data-organizer class="hidden">Scanner</a>
+      </div>
+      <div class="nav-auth" id="nav-auth"></div>
+    </div>
+  </nav>
+
+  <main>
+    <header class="page-head">
+      <div class="container">
+        <div>
+          <h1>Organizer dashboard</h1>
+          <p>Create events, watch registrations and check-ins, export attendee lists.</p>
+        </div>
+        <div class="actions-cell hidden" id="head-actions">
+          <a class="btn" href="#create">New event</a>
+          <a class="btn btn-light" href="/scanner">Open scanner</a>
+        </div>
+      </div>
+    </header>
+
+    <!-- Shown when the visitor isn't an organizer -->
+    <section class="section hidden" id="gate">
+      <div class="container">
+        <div class="empty">
+          <h2 id="gate-title">Organizer access only</h2>
+          <p id="gate-text"></p>
+          <a class="btn" id="gate-button" href="/">Go to events</a>
+        </div>
+      </div>
+    </section>
+
+    <div id="dashboard" class="hidden">
+      <!-- Stats + events table -->
+      <section class="section" id="events">
+        <div class="container">
+          <div class="stats">
+            <div class="stat"><div class="num" id="stat-events">0</div><div class="label">Upcoming events</div></div>
+            <div class="stat"><div class="num" id="stat-registered">0</div><div class="label">Registrations</div></div>
+            <div class="stat"><div class="num" id="stat-checked">0</div><div class="label">Checked in</div></div>
+            <div class="stat"><div class="num" id="stat-rate">0%</div><div class="label">Show-up rate</div></div>
+          </div>
+
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">All events</p>
+              <h2>Events</h2>
+            </div>
+            <button class="btn btn-outline btn-sm" id="refresh" type="button">Refresh</button>
+          </div>
+
+          <div class="table-wrap" id="events-table">
+            <table>
+              <thead>
+                <tr>
+                  <th>Event</th>
+                  <th>Date</th>
+                  <th>Registered</th>
+                  <th>Checked in</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="events-body"></tbody>
+            </table>
+          </div>
+          <div class="empty hidden" id="events-empty">No events yet. Create your first one below.</div>
+        </div>
+      </section>
+
+      <!-- Attendees for one event -->
+      <section class="section section-alt hidden" id="attendees">
+        <div class="container">
+          <div class="section-head">
+            <div>
+              <p class="eyebrow">Attendees</p>
+              <h2 id="att-title"></h2>
+              <p class="muted small" id="att-meta"></p>
+            </div>
+            <div class="actions-cell">
+              <button class="btn btn-outline btn-sm" id="att-csv" type="button">Download CSV</button>
+              <a class="btn btn-dark btn-sm" id="att-scan" href="/scanner">Scan tickets</a>
+              <button class="btn btn-outline btn-sm" id="att-close" type="button">Close</button>
+            </div>
+          </div>
+
+          <div class="split">
+            <div>
+              <label for="att-search">Search attendees</label>
+              <input id="att-search" type="search" placeholder="Email">
+            </div>
+            <form id="manual-form">
+              <label for="manual-code">Manual check-in (ticket backup code)</label>
+              <div class="inline-form">
+                <input id="manual-code" placeholder="Paste the code from the attendee's ticket" required>
+                <button class="btn" type="submit">Check in</button>
+              </div>
+            </form>
+          </div>
+
+          <p class="muted small" id="att-summary"></p>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Email</th>
+                  <th>Registered</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="att-body"></tbody>
+            </table>
+          </div>
+          <div class="empty hidden" id="att-empty">Nobody has registered yet.</div>
+        </div>
+      </section>
+
+      <!-- Create event -->
+      <section class="section" id="create">
+        <div class="container">
+          <div class="split">
+            <div>
+              <p class="eyebrow">New event</p>
+              <h2>Create an event</h2>
+              <p class="muted">It appears on the public events page right away, and students can register immediately.</p>
+              <p class="muted small" id="tz-note"></p>
+            </div>
+            <form class="form-card" id="create-form">
+              <label for="ev-name">Event name</label>
+              <input id="ev-name" maxlength="200" placeholder="e.g. AI Club kickoff" required>
+              <div class="form-row">
+                <div>
+                  <label for="ev-start">Date and time</label>
+                  <input id="ev-start" type="datetime-local" required>
+                </div>
+                <div>
+                  <label for="ev-capacity">Capacity</label>
+                  <input id="ev-capacity" type="number" min="1" step="1" value="50" required>
+                </div>
+              </div>
+              <label for="ev-location">Location</label>
+              <input id="ev-location" maxlength="200" placeholder="e.g. CoRE 101" required>
+              <button class="btn btn-block" type="submit">Create event</button>
+            </form>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <span>&copy; EventPass</span>
+      <span><a href="/#events">Events</a><a href="/scanner">Scanner</a><a href="/docs">API</a></span>
+    </div>
+  </footer>
+
+  <script src="/static/app.js"></script>
+  <script>
+    let events = [];
+    let attendance = new Map(); // event_id -> {registered, checked_in, capacity}
+    let selected = null;        // event whose attendees are open
+    let attendees = [];
+
+    // ---------- Access check ----------
+    function showGate() {
+      show("gate", true);
+      if (!currentUser) {
+        $("gate-text").textContent = "Log in with an organizer account to manage events.";
+        $("gate-button").textContent = "Log in";
+        $("gate-button").href = "/?next=%2Forganizer#account";
+      } else {
+        $("gate-text").textContent = `You're logged in as ${currentUser.email}, which is a student account. Ask an admin to give you organizer access.`;
+      }
+    }
+
+    // ---------- Load everything ----------
+    async function loadAllEvents() {
+      const all = [];
+      for (let offset = 0; ; offset += 100) {
+        const response = await api(`/events?limit=100&offset=${offset}`);
+        if (!response.ok) throw new Error(await errorMessage(response));
+        const page = await response.json();
+        all.push(...page);
+        if (page.length < 100) return all;
+      }
+    }
+
+    async function loadAttendance(ev) {
+      const response = await api(`/events/${ev.id}/attendance`);
+      if (response.ok) attendance.set(ev.id, await response.json());
+    }
+
+    async function loadDashboard() {
+      $("refresh").disabled = true;
+      try {
+        events = await loadAllEvents();
+        await Promise.all(events.map(loadAttendance));
+        renderStats();
+        renderTable();
+      } catch (error) {
+        showMessage(error.message || "Couldn't load the dashboard.", "bad");
+      } finally {
+        $("refresh").disabled = false;
+      }
+    }
+
+    function counts(ev) {
+      return attendance.get(ev.id) || { registered: 0, checked_in: 0, capacity: ev.capacity };
+    }
+
+    function renderStats() {
+      let registered = 0;
+      let checked = 0;
+      for (const ev of events) {
+        registered += counts(ev).registered;
+        checked += counts(ev).checked_in;
+      }
+      $("stat-events").textContent = events.filter((ev) => !isPast(ev)).length;
+      $("stat-registered").textContent = registered;
+      $("stat-checked").textContent = checked;
+      $("stat-rate").textContent = registered ? `${Math.round((checked / registered) * 100)}%` : "0%";
+    }
+
+    function renderTable() {
+      show("events-table", events.length > 0);
+      show("events-empty", events.length === 0);
+      $("events-body").replaceChildren(...sortEvents(events).map((ev) => {
+        const c = counts(ev);
+        const full = Math.min(100, Math.round((c.registered / c.capacity) * 100));
+        const rate = c.registered ? `${Math.round((c.checked_in / c.registered) * 100)}%` : "-";
+        return el("tr", {},
+          el("td", {},
+            el("strong", {}, ev.name),
+            el("div", { class: "muted small" }, ev.location),
+            isPast(ev) ? el("span", { class: "badge" }, "Ended") : null,
+          ),
+          el("td", {}, formatTime(ev.starts_at)),
+          el("td", {},
+            `${c.registered} / ${c.capacity}`,
+            el("div", { class: "bar", title: `${full}% full` }, el("span", { style: `width: ${full}%` })),
+          ),
+          el("td", {}, `${c.checked_in}`, el("div", { class: "muted small" }, rate)),
+          el("td", {},
+            el("div", { class: "actions-cell" },
+              el("button", { class: "btn btn-sm", onclick: () => openAttendees(ev) }, "Attendees"),
+              el("button", { class: "btn btn-outline btn-sm", onclick: (e) => downloadCsv(ev, e.currentTarget) }, "CSV"),
+              el("a", { class: "btn btn-dark btn-sm", href: `/scanner?event=${ev.id}` }, "Scan"),
+            ),
+          ),
+        );
+      }));
+    }
+
+    $("refresh").addEventListener("click", async () => {
+      await loadDashboard();
+      if (selected) await loadAttendees();
+    });
+
+    // ---------- CSV ----------
+    async function downloadCsv(ev, button) {
+      if (button) button.disabled = true;
+      try {
+        await downloadFile(`/events/${ev.id}/attendees.csv`, `event_${ev.id}_attendees.csv`);
+      } catch (error) {
+        showMessage(error.message, "bad");
+      } finally {
+        if (button) button.disabled = false;
+      }
+    }
+
+    // Small CSV reader that understands quoted fields like "Smith, Jo".
+    function parseCsv(text) {
+      const rows = [];
+      let row = [];
+      let field = "";
+      let quoted = false;
+      for (let i = 0; i < text.length; i++) {
+        const ch = text[i];
+        if (quoted) {
+          if (ch === '"' && text[i + 1] === '"') { field += '"'; i++; }
+          else if (ch === '"') quoted = false;
+          else field += ch;
+        } else if (ch === '"') quoted = true;
+        else if (ch === ",") { row.push(field); field = ""; }
+        else if (ch === "\n") { row.push(field); rows.push(row); row = []; field = ""; }
+        else if (ch !== "\r") field += ch;
+      }
+      if (field || row.length) { row.push(field); rows.push(row); }
+      return rows;
+    }
+
+    // ---------- Attendees ----------
+    async function openAttendees(ev) {
+      selected = ev;
+      $("att-title").textContent = ev.name;
+      $("att-meta").textContent = `${formatTime(ev.starts_at)} · ${ev.location}`;
+      $("att-scan").href = `/scanner?event=${ev.id}`;
+      $("att-search").value = "";
+      show("attendees", true);
+      await loadAttendees();
+      $("attendees").scrollIntoView({ behavior: "smooth" });
+    }
+
+    async function loadAttendees() {
+      try {
+        const response = await api(`/events/${selected.id}/attendees.csv`);
+        if (!response.ok) throw new Error(await errorMessage(response));
+        attendees = parseCsv(await response.text())
+          .slice(1)
+          .filter((row) => row.length >= 4)
+          .map(([email, registeredAt, checkedIn, checkedInAt]) => ({
+            email,
+            registeredAt,
+            checkedIn: checkedIn === "yes",
+            checkedInAt,
+          }));
+        renderAttendees();
+      } catch (error) {
+        showMessage(error.message, "bad");
+      }
+    }
+
+    function renderAttendees() {
+      const query = $("att-search").value.trim().toLowerCase();
+      const list = attendees.filter((a) => !query || a.email.toLowerCase().includes(query));
+      const checked = attendees.filter((a) => a.checkedIn).length;
+      $("att-summary").textContent = `${attendees.length} registered · ${checked} checked in`;
+      show("att-empty", attendees.length === 0);
+      $("att-body").replaceChildren(...list.map((a, i) =>
+        el("tr", {},
+          el("td", {}, i + 1),
+          el("td", {}, a.email),
+          el("td", {}, formatTime(a.registeredAt)),
+          el("td", {},
+            a.checkedIn
+              ? el("span", { class: "badge badge-ok", title: formatTime(a.checkedInAt) }, `Checked in ${formatTime(a.checkedInAt)}`)
+              : el("span", { class: "badge" }, "Not yet"),
+          ),
+        )
+      ));
+    }
+
+    $("att-search").addEventListener("input", renderAttendees);
+    $("att-csv").addEventListener("click", (e) => downloadCsv(selected, e.currentTarget));
+    $("att-close").addEventListener("click", () => {
+      selected = null;
+      show("attendees", false);
+      $("events").scrollIntoView({ behavior: "smooth" });
+    });
+
+    $("manual-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const code = $("manual-code").value.trim();
+      if (!code || !selected) return;
+      try {
+        const response = await api(`/events/${selected.id}/check-ins`, { method: "POST", json: { qr_token: code } });
+        if (response.status === 201) showMessage("Checked in.", "ok");
+        else if (response.status === 409) showMessage("That ticket was already checked in.", "warn");
+        else if (response.status === 404) showMessage("That code isn't a ticket for this event.", "bad");
+        else throw new Error(await errorMessage(response));
+        $("manual-code").value = "";
+        await Promise.all([loadAttendees(), loadAttendance(selected)]);
+        renderStats();
+        renderTable();
+      } catch (error) {
+        showMessage(error.message, "bad");
+      }
+    });
+
+    // ---------- Create event ----------
+    $("tz-note").textContent = `Times are in your time zone (${Intl.DateTimeFormat().resolvedOptions().timeZone}). Attendees see them in theirs.`;
+
+    $("create-form").addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const startsAt = new Date($("ev-start").value); // the browser reads this as local time
+      if (Number.isNaN(startsAt.getTime())) {
+        showMessage("Pick a valid date and time.", "bad");
+        return;
+      }
+      if (startsAt < new Date() && !confirm("That time is in the past. Create the event anyway?")) return;
+
+      const body = {
+        name: $("ev-name").value.trim(),
+        starts_at: startsAt.toISOString(), // sent as UTC, e.g. "2030-03-01T15:00:00.000Z"
+        location: $("ev-location").value.trim(),
+        capacity: Number($("ev-capacity").value),
+      };
+      const button = event.submitter;
+      button.disabled = true;
+      try {
+        const response = await api("/events", { method: "POST", json: body });
+        if (response.status !== 201) throw new Error(await errorMessage(response));
+        showMessage(`Created "${body.name}".`, "ok");
+        event.target.reset();
+        await loadDashboard();
+        $("events").scrollIntoView({ behavior: "smooth" });
+      } catch (error) {
+        showMessage(error.message, "bad");
+      } finally {
+        button.disabled = false;
+      }
+    });
+
+    // ---------- Start ----------
+    async function init() {
+      await loadMe();
+      renderNav();
+      if (!isOrganizer()) {
+        showGate();
+        return;
+      }
+      show("dashboard", true);
+      show("head-actions", true);
+      await loadDashboard();
+    }
+
+    init();
+  </script>
+</body>
+</html>
