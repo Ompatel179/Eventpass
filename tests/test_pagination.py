@@ -4,7 +4,7 @@ def create_events(client, headers, count):
             "/events",
             json={
                 "name": f"Event {i + 1}",
-                "starts_at": "2030-01-01T18:00:00",
+                "starts_at": "2030-01-01T18:00:00Z",
                 "location": "Room 101",
                 "capacity": 50,
             },

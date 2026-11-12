@@ -7,7 +7,7 @@ def test_home(client):
 
 VALID_EVENT = {
     "name": "Career Fair",
-    "starts_at": "2030-03-01T10:00:00",
+    "starts_at": "2030-03-01T10:00:00Z",
     "location": "Busch Student Center",
     "capacity": 200,
 }
@@ -73,3 +73,14 @@ def test_get_missing_event_returns_404(client):
 
 def test_get_event_with_non_numeric_id_returns_422(client):
     assert client.get("/events/abc").status_code == 422
+
+def test_event_time_without_timezone_is_rejected(client, organizer_headers):
+    naive = {**VALID_EVENT, "starts_at": "2030-03-01T10:00:00"}
+    response = client.post("/events", json=naive, headers=organizer_headers)
+    assert response.status_code == 422
+
+
+def test_event_time_is_returned_in_utc(client, organizer_headers):
+    new_jersey = {**VALID_EVENT, "starts_at": "2030-03-01T10:00:00-05:00"}
+    response = client.post("/events", json=new_jersey, headers=organizer_headers)
+    assert response.json()["starts_at"] == "2030-03-01T15:00:00Z"

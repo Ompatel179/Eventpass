@@ -1,11 +1,10 @@
 from collections.abc import Generator
+from datetime import datetime
 
-from sqlalchemy import create_engine
+from sqlalchemy import DateTime, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from app.config import DATABASE_URL, DB_MAX_OVERFLOW, DB_POOL_SIZE
-
-
 
 
 engine = create_engine(
@@ -18,7 +17,7 @@ SessionLocal = sessionmaker(bind=engine)
 
 
 class Base(DeclarativeBase):
-    pass
+    type_annotation_map = {datetime: DateTime(timezone=True)}
 
 def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()

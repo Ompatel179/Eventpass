@@ -108,7 +108,7 @@ def test_role_claim_in_token_is_not_trusted(client, student_headers):
     token = make_token(SECRET_KEY, 30)
     response = client.post(
         "/events",
-        json={"name": "Hack", "starts_at": "2030-01-01T18:00:00", "location": "X", "capacity": 5},
+        json={"name": "Hack", "starts_at": "2030-01-01T18:00:00Z", "location": "X", "capacity": 5},
         headers={"Authorization": f"Bearer {token}"},
     )
     assert response.status_code == 403

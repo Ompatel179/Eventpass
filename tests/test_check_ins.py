@@ -29,7 +29,7 @@ def test_unknown_ticket_returns_404(client, organizer_headers, event_id):
 def test_ticket_for_another_event_returns_404(client, organizer_headers, event_id, ticket):
     other_event = client.post(
         "/events",
-        json={"name": "AI Club", "starts_at": "2030-02-01T18:00:00", "location": "CoRE", "capacity": 30},
+        json={"name": "AI Club", "starts_at": "2030-02-01T18:00:00Z", "location": "CoRE", "capacity": 30},
         headers=organizer_headers,
     ).json()
     response = scan(client, other_event["id"], organizer_headers, ticket["qr_token"])
